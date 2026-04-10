@@ -10,10 +10,16 @@ export default async (req) => {
 
   try {
     const { messages, prompt } = await req.json();
-    const apiKey = process.env.DEEPSEEK_API_KEY;
+    const apiKey =
+      process.env.DEEPSEEK_API_KEY ||
+      process.env.DEEPSEEK_APIKEY ||
+      process.env.IDFPSPFK_API_KEY ||
+      process.env.IDFPSPFK_APIKEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "Missing DEEPSEEK_API_KEY" }), {
+      return new Response(JSON.stringify({
+        error: "Missing API key. Please set DEEPSEEK_API_KEY in Vercel Project Settings -> Environment Variables."
+      }), {
         status: 500,
         headers: { "Content-Type": "application/json" }
       });
