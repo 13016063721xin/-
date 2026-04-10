@@ -97,8 +97,14 @@
       backdrop-filter: blur(8px);
     }
 
+    .chat-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
     .chat-input {
-      width: 100%;
+      flex: 1;
       border: none;
       background: rgba(255, 255, 255, 0.08);
       outline: none;
@@ -106,13 +112,10 @@
       color: var(--text);
       padding: 10px 12px;
       border-radius: 10px;
-      margin-bottom: 10px;
-      min-height: 110px;
-      resize: vertical;
     }
 
     .chat-log {
-      min-height: 170px;
+      height: 230px;
       border-radius: 12px;
       border: 1px solid var(--border);
       padding: 12px;
@@ -157,9 +160,11 @@
 
       <section class="chat" aria-label="AI 对话框">
         <div class="chat-panel">
-          <textarea id="user-input" class="chat-input" placeholder="输入你想生成的文档要求..."></textarea>
-          <button id="sendBtn" class="chat-send" type="button">生成文档</button>
-          <div id="output" class="chat-log">准备就绪，输入需求后点击“生成文档”。</div>
+          <div id="output" class="chat-log">系统：你好，这里是 DeepSeek 聊天模式，直接输入问题即可。</div>
+          <div class="chat-row">
+            <input id="user-input" class="chat-input" type="text" placeholder="输入消息，按回车发送..." autocomplete="off" />
+            <button id="sendBtn" class="chat-send" type="button">发送</button>
+          </div>
         </div>
       </section>
 
@@ -244,17 +249,24 @@
       const userInput = document.getElementById("user-input");
       const sendBtn = document.getElementById("sendBtn");
       const output = document.getElementById("output");
+      const messages = [
+        { role: "system", content: "你是一个简洁、友好的中文助手。" }
+      ];
+
+      function appendLine(role, text) {
+        output.textContent += `\n${role}：${text}`;
+        output.scrollTop = output.scrollHeight;
+      }
 
       async function sendMessage() {
         const prompt = userInput.value.trim();
-        if (!prompt) {
-          output.textContent = "请先输入文档需求。";
-          return;
-        }
+        if (!prompt) return;
 
         sendBtn.disabled = true;
-        sendBtn.textContent = "生成中...";
-        output.textContent = "正在死磕生成中...";
+        sendBtn.textContent = "发送中...";
+        appendLine("你", prompt);
+        userInput.value = "";
+        messages.push({ role: "user", content: prompt });
 
         try {
           const res = await fetch("/api/chat", {
@@ -262,7 +274,7 @@
             headers: {
               "Content-Type": "application/json"
             },
-            body: JSON.stringify({ prompt })
+            body: JSON.stringify({ messages })
           });
 
           if (!res.ok) {
@@ -272,18 +284,20 @@
 
           const data = await res.json();
           const reply = data?.choices?.[0]?.message?.content || "接口返回为空。";
-          output.textContent = reply;
+          appendLine("AI", reply);
+          messages.push({ role: "assistant", content: reply });
         } catch (err) {
-          output.textContent = `失败了: ${err.message}`;
+          appendLine("系统", `失败了: ${err.message}`);
         } finally {
           sendBtn.disabled = false;
-          sendBtn.textContent = "生成文档";
+          sendBtn.textContent = "发送";
         }
       }
 
       sendBtn.addEventListener("click", sendMessage);
       userInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        if (e.key === "Enter") {
+          e.preventDefault();
           sendMessage();
         }
       });
