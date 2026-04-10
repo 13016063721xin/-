@@ -97,12 +97,6 @@
       backdrop-filter: blur(8px);
     }
 
-    .chat-row {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
     .chat-input {
       width: 100%;
       border: none;
@@ -112,28 +106,22 @@
       color: var(--text);
       padding: 10px 12px;
       border-radius: 10px;
+      margin-bottom: 10px;
+      min-height: 110px;
+      resize: vertical;
     }
 
     .chat-log {
-      height: 190px;
-      overflow-y: auto;
+      min-height: 170px;
       border-radius: 12px;
       border: 1px solid var(--border);
       padding: 12px;
       font-size: 14px;
       line-height: 1.5;
       background: rgba(0, 0, 0, 0.16);
-      margin-bottom: 10px;
-    }
-
-    .chat-line {
-      margin: 0 0 8px;
       white-space: pre-wrap;
       word-break: break-word;
-    }
-
-    .chat-line strong {
-      color: #d9e7ff;
+      overflow-y: auto;
     }
 
     .chat-send {
@@ -169,16 +157,9 @@
 
       <section class="chat" aria-label="AI 对话框">
         <div class="chat-panel">
-          <div class="chat-row">
-            <input id="apiKeyInput" class="chat-input" type="password" placeholder="输入 DeepSeek API Key（sk-...）" autocomplete="off" />
-          </div>
-          <div id="chatLog" class="chat-log">
-            <p class="chat-line"><strong>系统：</strong>你好，这里是简洁 AI 对话框。输入问题后点击发送。</p>
-          </div>
-          <div class="chat-row">
-            <input id="userInput" class="chat-input" type="text" placeholder="请输入你想问的问题..." autocomplete="off" />
-            <button id="sendBtn" class="chat-send" type="button">发送</button>
-          </div>
+          <textarea id="user-input" class="chat-input" placeholder="输入你想生成的文档要求..."></textarea>
+          <button id="sendBtn" class="chat-send" type="button">生成文档</button>
+          <div id="output" class="chat-log">准备就绪，输入需求后点击“生成文档”。</div>
         </div>
       </section>
 
@@ -260,55 +241,28 @@
     }
 
     function initChat() {
-      const apiKeyInput = document.getElementById("apiKeyInput");
-      const userInput = document.getElementById("userInput");
+      const userInput = document.getElementById("user-input");
       const sendBtn = document.getElementById("sendBtn");
-      const chatLog = document.getElementById("chatLog");
-      const storageKey = "deepseek_api_key";
-
-      apiKeyInput.value = localStorage.getItem(storageKey) || "";
-      apiKeyInput.addEventListener("change", () => {
-        localStorage.setItem(storageKey, apiKeyInput.value.trim());
-      });
-
-      function appendLine(role, text) {
-        const line = document.createElement("p");
-        line.className = "chat-line";
-        line.innerHTML = `<strong>${role}：</strong>${text}`;
-        chatLog.appendChild(line);
-        chatLog.scrollTop = chatLog.scrollHeight;
-      }
+      const output = document.getElementById("output");
 
       async function sendMessage() {
-        const message = userInput.value.trim();
-        const apiKey = apiKeyInput.value.trim();
-        if (!message) return;
-        appendLine("你", message);
-        userInput.value = "";
-
-        if (!apiKey) {
-          appendLine("系统", "请先填写 DeepSeek API Key。");
+        const prompt = userInput.value.trim();
+        if (!prompt) {
+          output.textContent = "请先输入文档需求。";
           return;
         }
 
         sendBtn.disabled = true;
-        sendBtn.textContent = "发送中...";
+        sendBtn.textContent = "生成中...";
+        output.textContent = "正在死磕生成中...";
 
         try {
-          const res = await fetch("https://api.deepseek.com/chat/completions", {
+          const res = await fetch("/api/chat", {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`
+              "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-              model: "deepseek-chat",
-              messages: [
-                { role: "system", content: "你是一个简洁的中文助手。" },
-                { role: "user", content: message }
-              ],
-              temperature: 0.7
-            })
+            body: JSON.stringify({ prompt })
           });
 
           if (!res.ok) {
@@ -318,18 +272,18 @@
 
           const data = await res.json();
           const reply = data?.choices?.[0]?.message?.content || "接口返回为空。";
-          appendLine("AI", reply);
+          output.textContent = reply;
         } catch (err) {
-          appendLine("系统", `请求失败：${err.message}`);
+          output.textContent = `失败了: ${err.message}`;
         } finally {
           sendBtn.disabled = false;
-          sendBtn.textContent = "发送";
+          sendBtn.textContent = "生成文档";
         }
       }
 
       sendBtn.addEventListener("click", sendMessage);
       userInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
           sendMessage();
         }
       });
