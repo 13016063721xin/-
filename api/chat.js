@@ -1,4 +1,4 @@
-export const config = { runtime: 'edge' };
+export const config = { runtime: "edge" };
 
 export default async (req) => {
   if (req.method !== "POST") {
@@ -17,35 +17,58 @@ export default async (req) => {
       process.env.IDFPSPFK_APIKEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({
-        error: "Missing API key. Please set DEEPSEEK_API_KEY in Vercel Project Settings -> Environment Variables."
-      }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
+      return new Response(
+        JSON.stringify({
+          error:
+            "Missing API key. Please set DEEPSEEK_API_KEY in Vercel Project Settings -> Environment Variables."
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
     }
 
     const finalMessages = Array.isArray(messages) && messages.length
       ? messages
       : [{ role: "user", content: String(prompt || "") }];
 
-    const response = await fetch("https://api.deepseek.com/chat/completions", {
+    const upstream = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
+        Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: "deepseek-chat",
         messages: finalMessages,
-        temperature: 0.7
+        temperature: 0.7,
+        stream: true
       })
     });
 
-    const data = await response.json();
-    return new Response(JSON.stringify(data), {
-      status: response.status,
-      headers: { "Content-Type": "application/json" }
+    if (!upstream.ok || !upstream.body) {
+      const errText = await upstream.text();
+      return new Response(
+        JSON.stringify({
+          error: errText || upstream.statusText,
+          status: upstream.status
+        }),
+        {
+          status: upstream.status,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no"
+      }
     });
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message || "Bad Request" }), {

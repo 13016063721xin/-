@@ -146,7 +146,11 @@ function appendUserLine(container, text) {
   container.scrollTop = container.scrollHeight;
 }
 
-function appendAssistantBlock(container, text) {
+/**
+ * 创建一条可流式更新的 AI 消息块；流结束后启用「导出 Word」，内容为完整拼接结果。
+ * @returns {{ wrap: HTMLDivElement, appendDelta: (s: string) => void, finish: () => void, getFullText: () => string }}
+ */
+function createStreamingAssistantBlock(container) {
   const wrap = document.createElement("div");
   wrap.className = "chat-msg chat-msg--assistant";
 
@@ -157,7 +161,7 @@ function appendAssistantBlock(container, text) {
   label.textContent = "AI：";
   const body = document.createElement("div");
   body.className = "chat-msg-text";
-  body.textContent = text;
+  body.textContent = "";
   bodyRow.appendChild(label);
   bodyRow.appendChild(body);
   wrap.appendChild(bodyRow);
@@ -168,8 +172,11 @@ function appendAssistantBlock(container, text) {
   btn.type = "button";
   btn.className = "chat-send";
   btn.textContent = "导出 Word";
+  btn.disabled = true;
+
+  let fullText = "";
   btn.addEventListener("click", () => {
-    exportToWord(text).catch((err) => {
+    exportToWord(fullText).catch((err) => {
       console.error(err);
       alert(`导出失败：${err.message || err}`);
     });
@@ -179,6 +186,70 @@ function appendAssistantBlock(container, text) {
 
   container.appendChild(wrap);
   container.scrollTop = container.scrollHeight;
+
+  return {
+    wrap,
+    appendDelta(delta) {
+      fullText += delta;
+      body.textContent = fullText;
+      container.scrollTop = container.scrollHeight;
+    },
+    finish() {
+      btn.disabled = false;
+    },
+    getFullText() {
+      return fullText;
+    }
+  };
+}
+
+/**
+ * 使用 ReadableStreamDefaultReader 读取 OpenAI 兼容的 SSE，逐块解析 delta.content。
+ * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+ * @param {(chunk: string) => void} onDelta
+ */
+async function readOpenAICompatibleSSEStream(reader, onDelta) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let nl;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const rawLine = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      const line = rawLine.replace(/\r$/, "");
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trimStart();
+      if (payload === "[DONE]") return;
+      try {
+        const json = JSON.parse(payload);
+        const delta = json?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta.length) onDelta(delta);
+      } catch {
+        /* 忽略非 JSON 行 */
+      }
+    }
+  }
+
+  const tail = buffer.trim();
+  if (tail.startsWith("data:")) {
+    const payload = tail.slice(5).trimStart();
+    if (payload === "[DONE]") return;
+    if (payload) {
+      try {
+        const json = JSON.parse(payload);
+        const delta = json?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta.length) onDelta(delta);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 function initChat() {
@@ -199,25 +270,52 @@ function initChat() {
     userInput.value = "";
     messages.push({ role: "user", content: prompt });
 
+    const streamBlock = createStreamingAssistantBlock(output);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          Accept: "text/event-stream"
         },
         body: JSON.stringify({ messages })
       });
 
       if (!res.ok) {
+        output.removeChild(streamBlock.wrap);
         const errText = await res.text();
-        throw new Error(`HTTP ${res.status} ${errText}`);
+        let detail = errText;
+        try {
+          const j = JSON.parse(errText);
+          detail = j.error || j.message || errText;
+        } catch {
+          /* 保持原文 */
+        }
+        throw new Error(`HTTP ${res.status} ${detail}`);
       }
 
-      const data = await res.json();
-      const reply = data?.choices?.[0]?.message?.content || "接口返回为空。";
-      appendAssistantBlock(output, reply);
+      const body = res.body;
+      if (!body) {
+        throw new Error("响应无 body，无法读取流。");
+      }
+
+      const reader = body.getReader();
+      await readOpenAICompatibleSSEStream(reader, (delta) => {
+        streamBlock.appendDelta(delta);
+      });
+
+      streamBlock.finish();
+      let reply = streamBlock.getFullText();
+      if (!reply.trim()) {
+        streamBlock.appendDelta("接口返回为空。");
+        reply = streamBlock.getFullText();
+      }
       messages.push({ role: "assistant", content: reply });
     } catch (err) {
+      if (streamBlock.wrap.parentNode === output) {
+        output.removeChild(streamBlock.wrap);
+      }
       appendSystemLine(output, `失败了: ${err.message}`);
     } finally {
       sendBtn.disabled = false;
