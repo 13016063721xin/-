@@ -314,7 +314,6 @@ function initChat() {
   const output = document.getElementById("output");
   const modeChat = document.getElementById("modeChat");
   const modeDoc = document.getElementById("modeDoc");
-  const modeHint = document.getElementById("modeHint");
 
   const messages = [{ role: "system", content: "你是一个简洁、友好的中文助手。" }];
 
@@ -325,9 +324,6 @@ function initChat() {
     modeDoc.classList.toggle("mode-btn--active", docMode);
     modeChat.setAttribute("aria-selected", String(!docMode));
     modeDoc.setAttribute("aria-selected", String(docMode));
-    modeHint.textContent = docMode
-      ? "当前：文档/长文，使用思考模型（Reasoner），可导出 Word"
-      : "当前：日常对话，使用 Chat 模型（无导出按钮）";
   }
 
   modeChat.addEventListener("click", () => {

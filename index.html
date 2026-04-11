@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>个人导航主页</title>
+  <title>AI生成文档</title>
   <style>
     :root {
       --bg: #040712;
@@ -124,10 +124,8 @@
       border-color: transparent;
     }
 
-    .chat-mode-hint {
-      font-size: 12px;
-      color: var(--subtle);
-      margin-left: 4px;
+    .footer {
+      display: none;
     }
 
     .chat-panel {
@@ -250,12 +248,6 @@
       transform: translateY(-1px);
       opacity: 1;
     }
-
-    .footer {
-      margin-top: 20px;
-      font-size: 13px;
-      color: var(--subtle);
-    }
   </style>
 </head>
 <body>
@@ -270,8 +262,7 @@
         <div class="chat-panel">
           <div class="chat-mode-bar" role="tablist" aria-label="对话模式">
             <button type="button" id="modeChat" class="mode-btn mode-btn--active" role="tab" aria-selected="true">聊天</button>
-            <button type="button" id="modeDoc" class="mode-btn" role="tab" aria-selected="false">文档（思考）</button>
-            <span id="modeHint" class="chat-mode-hint">当前：日常对话，使用 Chat 模型</span>
+            <button type="button" id="modeDoc" class="mode-btn" role="tab" aria-selected="false">Word</button>
           </div>
           <div id="output" class="chat-log" role="log" aria-live="polite"></div>
           <div class="chat-row">
