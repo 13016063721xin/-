@@ -278,8 +278,7 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
     let nl;
     while ((nl = buffer.indexOf("\n")) >= 0) {
       const rawLine = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      const line = rawLine.replace(/\r$/, "");
+      // 🌟 优化：先尝试解析，如果当前行不是完整的 JSON 就不消费 buffer（针对网络分块极端的场景）
       const trimmed = line.trim();
       if (!trimmed.startsWith("data:")) continue;
       const payload = trimmed.slice(5).trimStart();
