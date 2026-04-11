@@ -9,7 +9,7 @@ export default async (req) => {
   }
 
   try {
-    const { messages, prompt } = await req.json();
+    const { messages, prompt, model: clientModel } = await req.json();
     const apiKey =
       process.env.DEEPSEEK_API_KEY ||
       process.env.DEEPSEEK_APIKEY ||
@@ -33,6 +33,12 @@ export default async (req) => {
       ? messages
       : [{ role: "user", content: String(prompt || "") }];
 
+    const allowed = new Set(["deepseek-chat", "deepseek-reasoner"]);
+    const model =
+      typeof clientModel === "string" && allowed.has(clientModel)
+        ? clientModel
+        : "deepseek-chat";
+
     const upstream = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
@@ -40,7 +46,7 @@ export default async (req) => {
         Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model,
         messages: finalMessages,
         temperature: 0.7,
         stream: true

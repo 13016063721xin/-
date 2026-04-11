@@ -147,10 +147,10 @@ function appendUserLine(container, text) {
 }
 
 /**
- * 创建一条可流式更新的 AI 消息块；流结束后启用「导出 Word」，内容为完整拼接结果。
- * @returns {{ wrap: HTMLDivElement, appendDelta: (s: string) => void, finish: () => void, getFullText: () => string }}
+ * @param {boolean} docMode 文档（思考）模式：Reasoner 模型、展示思考过程、结束后可导出 Word
+ * @returns {{ wrap: HTMLDivElement, appendDelta: (p: { content?: string, reasoning_content?: string }) => void, finish: () => void, getFullText: () => string }}
  */
-function createStreamingAssistantBlock(container) {
+function createStreamingAssistantBlock(container, docMode) {
   const wrap = document.createElement("div");
   wrap.className = "chat-msg chat-msg--assistant";
 
@@ -159,58 +159,116 @@ function createStreamingAssistantBlock(container) {
   const label = document.createElement("span");
   label.className = "chat-msg-label";
   label.textContent = "AI：";
-  const body = document.createElement("div");
-  body.className = "chat-msg-text";
-  body.textContent = "";
-  bodyRow.appendChild(label);
-  bodyRow.appendChild(body);
-  wrap.appendChild(bodyRow);
-
-  const actions = document.createElement("div");
-  actions.className = "chat-msg-actions";
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "chat-send";
-  btn.textContent = "导出 Word";
-  btn.disabled = true;
 
   let fullText = "";
-  btn.addEventListener("click", () => {
-    exportToWord(fullText).catch((err) => {
-      console.error(err);
-      alert(`导出失败：${err.message || err}`);
+  let reasoningText = "";
+  let answerText = "";
+
+  /** 单栏：聊天模式 */
+  const bodySingle = document.createElement("div");
+  bodySingle.className = "chat-msg-text";
+  bodySingle.textContent = "";
+
+  /** 双栏：思考 + 正文 */
+  const stack = document.createElement("div");
+  stack.className = "chat-msg-text chat-msg-text--stack";
+  const reasoningEl = document.createElement("div");
+  reasoningEl.className = "chat-msg-reasoning";
+  const answerEl = document.createElement("div");
+  answerEl.className = "chat-msg-answer";
+  stack.appendChild(reasoningEl);
+  stack.appendChild(answerEl);
+
+  bodyRow.appendChild(label);
+  bodyRow.appendChild(docMode ? stack : bodySingle);
+  wrap.appendChild(bodyRow);
+
+  let btn = null;
+  if (docMode) {
+    const actions = document.createElement("div");
+    actions.className = "chat-msg-actions";
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chat-send";
+    btn.textContent = "导出 Word";
+    btn.disabled = true;
+    btn.title = "导出当前回复为 Word（需等待生成结束）";
+    btn.addEventListener("click", () => {
+      const out = answerText.trim() || reasoningText.trim() || fullText;
+      exportToWord(out).catch((err) => {
+        console.error(err);
+        alert(`导出失败：${err.message || err}`);
+      });
     });
-  });
-  actions.appendChild(btn);
-  wrap.appendChild(actions);
+    actions.appendChild(btn);
+    wrap.appendChild(actions);
+  }
 
   container.appendChild(wrap);
   container.scrollTop = container.scrollHeight;
 
+  function scroll() {
+    container.scrollTop = container.scrollHeight;
+  }
+
   return {
     wrap,
-    appendDelta(delta) {
-      fullText += delta;
-      body.textContent = fullText;
-      container.scrollTop = container.scrollHeight;
+    appendDelta(part) {
+      if (!docMode) {
+        const c = part.content;
+        if (typeof c === "string" && c.length) {
+          fullText += c;
+          bodySingle.textContent = fullText;
+          scroll();
+        }
+        return;
+      }
+      if (typeof part.reasoning_content === "string" && part.reasoning_content.length) {
+        reasoningText += part.reasoning_content;
+        reasoningEl.textContent = reasoningText;
+        scroll();
+      }
+      if (typeof part.content === "string" && part.content.length) {
+        answerText += part.content;
+        answerEl.textContent = answerText;
+        scroll();
+      }
     },
     finish() {
-      btn.disabled = false;
+      if (btn) btn.disabled = false;
     },
     getFullText() {
+      if (docMode) {
+        const a = answerText.trim();
+        const r = reasoningText.trim();
+        return a || r || fullText;
+      }
       return fullText;
     }
   };
 }
 
 /**
- * 使用 ReadableStreamDefaultReader 读取 OpenAI 兼容的 SSE，逐块解析 delta.content。
+ * 使用 ReadableStreamDefaultReader 读取 OpenAI 兼容 SSE，解析 delta.content / delta.reasoning_content。
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
- * @param {(chunk: string) => void} onDelta
+ * @param {(chunk: { content?: string, reasoning_content?: string }) => void} onDelta
  */
 async function readOpenAICompatibleSSEStream(reader, onDelta) {
   const decoder = new TextDecoder();
   let buffer = "";
+
+  function emitFromJson(json) {
+    const d = json?.choices?.[0]?.delta;
+    if (!d || typeof d !== "object") return;
+    const out = {};
+    if (typeof d.reasoning_content === "string" && d.reasoning_content.length) {
+      out.reasoning_content = d.reasoning_content;
+    }
+    if (typeof d.content === "string" && d.content.length) {
+      out.content = d.content;
+    }
+    if (Object.keys(out).length) onDelta(out);
+  }
 
   while (true) {
     const { done, value } = await reader.read();
@@ -228,8 +286,7 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
       if (payload === "[DONE]") return;
       try {
         const json = JSON.parse(payload);
-        const delta = json?.choices?.[0]?.delta?.content;
-        if (typeof delta === "string" && delta.length) onDelta(delta);
+        emitFromJson(json);
       } catch {
         /* 忽略非 JSON 行 */
       }
@@ -243,8 +300,7 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
     if (payload) {
       try {
         const json = JSON.parse(payload);
-        const delta = json?.choices?.[0]?.delta?.content;
-        if (typeof delta === "string" && delta.length) onDelta(delta);
+        emitFromJson(json);
       } catch {
         /* ignore */
       }
@@ -256,9 +312,38 @@ function initChat() {
   const userInput = document.getElementById("user-input");
   const sendBtn = document.getElementById("sendBtn");
   const output = document.getElementById("output");
+  const modeChat = document.getElementById("modeChat");
+  const modeDoc = document.getElementById("modeDoc");
+  const modeHint = document.getElementById("modeHint");
+
   const messages = [{ role: "system", content: "你是一个简洁、友好的中文助手。" }];
 
-  appendSystemLine(output, "你好，这里是 DeepSeek 聊天模式，直接输入问题即可。");
+  let docMode = false;
+
+  function syncModeUI() {
+    modeChat.classList.toggle("mode-btn--active", !docMode);
+    modeDoc.classList.toggle("mode-btn--active", docMode);
+    modeChat.setAttribute("aria-selected", String(!docMode));
+    modeDoc.setAttribute("aria-selected", String(docMode));
+    modeHint.textContent = docMode
+      ? "当前：文档/长文，使用思考模型（Reasoner），可导出 Word"
+      : "当前：日常对话，使用 Chat 模型（无导出按钮）";
+  }
+
+  modeChat.addEventListener("click", () => {
+    docMode = false;
+    syncModeUI();
+  });
+  modeDoc.addEventListener("click", () => {
+    docMode = true;
+    syncModeUI();
+  });
+  syncModeUI();
+
+  appendSystemLine(
+    output,
+    "你好：请先选上方「聊天」或「文档（思考）」。聊天用 Chat 模型；写长文/导出 Word 请选文档模式并等待回复结束后再点「导出 Word」。"
+  );
 
   async function sendMessage() {
     const prompt = userInput.value.trim();
@@ -270,7 +355,8 @@ function initChat() {
     userInput.value = "";
     messages.push({ role: "user", content: prompt });
 
-    const streamBlock = createStreamingAssistantBlock(output);
+    const model = docMode ? "deepseek-reasoner" : "deepseek-chat";
+    const streamBlock = createStreamingAssistantBlock(output, docMode);
 
     try {
       const res = await fetch("/api/chat", {
@@ -279,7 +365,7 @@ function initChat() {
           "Content-Type": "application/json",
           Accept: "text/event-stream"
         },
-        body: JSON.stringify({ messages })
+        body: JSON.stringify({ messages, model })
       });
 
       if (!res.ok) {
@@ -308,7 +394,7 @@ function initChat() {
       streamBlock.finish();
       let reply = streamBlock.getFullText();
       if (!reply.trim()) {
-        streamBlock.appendDelta("接口返回为空。");
+        streamBlock.appendDelta({ content: "接口返回为空。" });
         reply = streamBlock.getFullText();
       }
       messages.push({ role: "assistant", content: reply });
