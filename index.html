@@ -131,6 +131,12 @@
       backdrop-filter: blur(8px);
     }
 
+    .chat-top-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 10px;
+    }
+
     .chat-log {
       min-height: 320px;
       height: min(52vh, 520px);
@@ -265,6 +271,7 @@
       margin-top: 6px;
       font-size: 12px;
       color: var(--subtle);
+      text-align: center;
     }
 
     .chat-image-grid {
@@ -341,67 +348,6 @@
     .footer {
       display: none;
     }
-
-    @media print {
-      body {
-        background: white !important;
-        color: black !important;
-        overflow: visible !important;
-      }
-
-      #starfield,
-      #clock,
-      .chat-mode-bar,
-      .chat-row,
-      .headline-top,
-      .headline,
-      .footer {
-        display: none !important;
-      }
-
-      .wrap {
-        padding: 0 !important;
-        display: block !important;
-      }
-
-      .chat {
-        max-width: 100% !important;
-      }
-
-      .chat-panel {
-        box-shadow: none !important;
-        border: none !important;
-        background: transparent !important;
-        padding: 0 !important;
-      }
-
-      .chat-log {
-        height: auto !important;
-        min-height: auto !important;
-        overflow: visible !important;
-        border: none !important;
-        background: transparent !important;
-        color: black !important;
-      }
-
-      .chat-msg-reasoning {
-        background: #f3f4f6 !important;
-        border: 1px solid #e5e7eb !important;
-        color: #4b5563 !important;
-      }
-
-      .chat-msg-label,
-      .chat-msg-text,
-      .chat-msg-answer,
-      .chat-msg,
-      .chat-image-name {
-        color: #000 !important;
-      }
-
-      .chat-msg-actions {
-        display: none !important;
-      }
-    }
   </style>
 </head>
 <body>
@@ -418,6 +364,10 @@
           <div class="chat-mode-bar" role="tablist" aria-label="对话模式">
             <button type="button" id="modeChat" class="mode-btn mode-btn--active" role="tab" aria-selected="true">聊天</button>
             <button type="button" id="modeDoc" class="mode-btn" role="tab" aria-selected="false">Word</button>
+          </div>
+
+          <div class="chat-top-actions">
+            <button id="exportConversationWordBtn" class="chat-send" type="button">导出当前对话 Word</button>
           </div>
 
           <div id="output" class="chat-log" role="log" aria-live="polite"></div>

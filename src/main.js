@@ -14,6 +14,14 @@ import jsPDF from "jspdf";
 const BODY_SIZE_HALF_POINTS = 24;
 const CJK_FONT = "Microsoft YaHei";
 
+/**
+ * 用于整段对话导出的统一数据源
+ * item:
+ * - { type: "text", role: "user" | "assistant" | "system", content: string }
+ * - { type: "image", role: "user", file: File, name: string }
+ */
+const conversationForExport = [];
+
 function exportFilenameWithTimestamp(prefix = "AI回复", ext = "docx") {
   const d = new Date();
   const y = d.getFullYear();
@@ -25,10 +33,27 @@ function exportFilenameWithTimestamp(prefix = "AI回复", ext = "docx") {
   return `${prefix}_${y}${m}${day}_${hh}${mm}${ss}.${ext}`;
 }
 
-/**
- * 单条纯文本导出 Word
- * @param {string} text
- */
+function pushConversationText(role, content) {
+  const text = String(content ?? "").trim();
+  if (!text) return;
+  conversationForExport.push({
+    type: "text",
+    role,
+    content: text
+  });
+}
+
+function pushConversationImages(files) {
+  files.forEach((file) => {
+    conversationForExport.push({
+      type: "image",
+      role: "user",
+      file,
+      name: file.name || "图片"
+    });
+  });
+}
+
 export async function exportToWord(text) {
   const normalized = String(text ?? "").replace(/\r\n/g, "\n");
   const lines = normalized.split("\n");
@@ -269,6 +294,113 @@ async function exportSingleReplyToPdf(text) {
   }
 }
 
+function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error(`读取图片失败：${file.name}`));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function getImageSize(file, maxWidth = 420) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      let width = img.naturalWidth;
+      let height = img.naturalHeight;
+
+      if (width > maxWidth) {
+        const ratio = maxWidth / width;
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      URL.revokeObjectURL(url);
+      resolve({ width, height });
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`无法读取图片尺寸：${file.name}`));
+    };
+
+    img.src = url;
+  });
+}
+
+function buildTextParagraph(text) {
+  return new Paragraph({
+    spacing: { after: 180 },
+    children: [
+      new TextRun({
+        text: text || " ",
+        font: {
+          ascii: CJK_FONT,
+          eastAsia: CJK_FONT,
+          hAnsi: CJK_FONT,
+          cs: CJK_FONT
+        },
+        size: BODY_SIZE_HALF_POINTS
+      })
+    ]
+  });
+}
+
+async function buildImageParagraph(file) {
+  const [buffer, size] = await Promise.all([
+    readFileAsArrayBuffer(file),
+    getImageSize(file)
+  ]);
+
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 220 },
+    children: [
+      new ImageRun({
+        data: buffer,
+        transformation: {
+          width: size.width,
+          height: size.height
+        }
+      })
+    ]
+  });
+}
+
+async function exportConversationToWord() {
+  if (!conversationForExport.length) {
+    throw new Error("当前没有可导出的对话内容");
+  }
+
+  const children = [];
+
+  for (const item of conversationForExport) {
+    if (item.type === "text") {
+      children.push(buildTextParagraph(item.content));
+    } else if (item.type === "image") {
+      children.push(await buildImageParagraph(item.file));
+      if (item.name) {
+        children.push(buildTextParagraph(item.name));
+      }
+    }
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children
+      }
+    ]
+  });
+
+  const blob = await Packer.toBlob(doc);
+  saveAs(blob, exportFilenameWithTimestamp("当前对话", "docx"));
+}
+
 /**
  * @param {boolean} docMode 文档（思考）模式
  * @returns {{ wrap: HTMLDivElement, appendDelta: (p: { content?: string, reasoning_content?: string }) => void, finish: () => void, getFullText: () => string }}
@@ -402,11 +534,6 @@ function createStreamingAssistantBlock(container, docMode) {
   };
 }
 
-/**
- * 读取 OpenAI 兼容 SSE
- * @param {ReadableStreamDefaultReader<Uint8Array>} reader
- * @param {(chunk: { content?: string, reasoning_content?: string }) => void} onDelta
- */
 async function readOpenAICompatibleSSEStream(reader, onDelta) {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -477,6 +604,7 @@ function initChat() {
   const uploadInput = document.getElementById("imageUploadInput");
   const uploadBtn = document.getElementById("imageUploadBtn");
   const stagingArea = document.getElementById("stagingArea");
+  const exportConversationWordBtn = document.getElementById("exportConversationWordBtn");
 
   const messages = [{ role: "system", content: "你是一个简洁、友好的中文助手。" }];
   let docMode = false;
@@ -558,6 +686,22 @@ function initChat() {
     uploadInput.value = "";
   });
 
+  exportConversationWordBtn.addEventListener("click", async () => {
+    const oldText = exportConversationWordBtn.textContent;
+    exportConversationWordBtn.disabled = true;
+    exportConversationWordBtn.textContent = "导出中...";
+
+    try {
+      await exportConversationToWord();
+    } catch (err) {
+      console.error(err);
+      alert(`导出失败：${err.message || err}`);
+    } finally {
+      exportConversationWordBtn.disabled = false;
+      exportConversationWordBtn.textContent = oldText;
+    }
+  });
+
   syncModeUI();
 
   appendSystemLine(
@@ -582,6 +726,13 @@ function initChat() {
     sendBtn.textContent = "发送中...";
 
     appendUserMixedMessage(output, prompt, sendingImages);
+
+    if (hasText) {
+      pushConversationText("user", `你：${prompt}`);
+    }
+    if (hasImages) {
+      pushConversationImages(sendingImages.map((item) => item.file));
+    }
 
     userInput.value = "";
     clearStagingArea();
@@ -637,6 +788,7 @@ function initChat() {
       }
 
       messages.push({ role: "assistant", content: reply });
+      pushConversationText("assistant", `AI：${reply}`);
     } catch (err) {
       if (streamBlock.wrap.parentNode === output) {
         output.removeChild(streamBlock.wrap);
