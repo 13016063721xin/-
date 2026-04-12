@@ -248,6 +248,57 @@
       transform: translateY(-1px);
       opacity: 1;
     }
+
+    /* 🌟 新增：打印/导出 PDF 专用的样式 */
+    @media print {
+      body {
+        background: white !important;
+        color: black !important;
+        overflow: visible !important;
+      }
+
+      #starfield,
+      #clock,
+      .chat-mode-bar,
+      .chat-row,
+      .chat-msg-actions,
+      .headline-top,
+      .headline {
+        display: none !important;
+      }
+
+      .wrap {
+        padding: 0 !important;
+        display: block !important;
+      }
+
+      .chat-panel {
+        box-shadow: none !important;
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+      }
+
+      .chat-log {
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+        border: none !important;
+        background: transparent !important;
+        color: black !important;
+      }
+
+      .chat-msg-reasoning {
+        background: #f3f4f6 !important;
+        border: 1px solid #e5e7eb !important;
+        color: #4b5563 !important;
+      }
+
+      .chat-msg-label {
+        color: #111827 !important;
+        font-weight: bold;
+      }
+    }
   </style>
 </head>
 <body>
@@ -279,3 +330,4 @@
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
+

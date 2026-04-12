@@ -184,9 +184,13 @@ function createStreamingAssistantBlock(container, docMode) {
   wrap.appendChild(bodyRow);
 
   let btn = null;
+  let pdfBtn = null; // 🌟 新增：PDF 按钮引用
+
   if (docMode) {
     const actions = document.createElement("div");
     actions.className = "chat-msg-actions";
+
+    // 原有的导出 Word 按钮
     btn = document.createElement("button");
     btn.type = "button";
     btn.className = "chat-send";
@@ -200,7 +204,22 @@ function createStreamingAssistantBlock(container, docMode) {
         alert(`导出失败：${err.message || err}`);
       });
     });
+
+    // 🌟 新增：导出 PDF 按钮
+    pdfBtn = document.createElement("button");
+    pdfBtn.type = "button";
+    pdfBtn.className = "chat-send";
+    pdfBtn.style.marginLeft = "8px"; // 加一点间距
+    pdfBtn.textContent = "导出 PDF";
+    pdfBtn.disabled = true;
+    pdfBtn.title = "将当前页面保存为 PDF（需等待生成结束）";
+    pdfBtn.addEventListener("click", () => {
+      // 临时给当前的对话容器加个高亮类（可选，这里为了简单直接调用 print）
+      window.print();
+    });
+
     actions.appendChild(btn);
+    actions.appendChild(pdfBtn); // 🌟 新增：将 PDF 按钮加入 DOM
     wrap.appendChild(actions);
   }
 
@@ -236,6 +255,7 @@ function createStreamingAssistantBlock(container, docMode) {
     },
     finish() {
       if (btn) btn.disabled = false;
+      if (pdfBtn) pdfBtn.disabled = false; // 🌟 新增：生成结束后启用 PDF 按钮
     },
     getFullText() {
       if (docMode) {
