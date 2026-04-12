@@ -1,4 +1,11 @@
-import { Document, Packer, Paragraph, TextRun } from "docx";
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  ImageRun,
+  AlignmentType
+} from "docx";
 import { saveAs } from "file-saver";
 
 /** 12pt；docx 中 size 为半磅 */
@@ -6,10 +13,9 @@ const BODY_SIZE_HALF_POINTS = 24;
 const CJK_FONT = "Microsoft YaHei";
 
 /**
- * 用于“整段图文导出”的统一数据源
- * item:
- * - { type: "text", role: "user" | "assistant" | "system", content: string }
- * - { type: "image", role: "user", name: string, mimeType: string, content: dataUrl }
+ * 统一维护“整段图文导出”的顺序数组
+ * text:  { type: "text", role: "user" | "assistant" | "system", content: string }
+ * image: { type: "image", role: "user", file: File, name: string, mimeType: string }
  */
 const exportSequence = [];
 
@@ -18,11 +24,14 @@ function exportFilenameWithTimestamp(prefix = "AI回复") {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${prefix}_${y}${m}${day}.docx`;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${prefix}_${y}${m}${day}_${hh}${mm}${ss}.docx`;
 }
 
 /**
- * 将文本按换行拆成多个段落，生成 Word 并下载。
+ * 单条纯文本导出 Word
  * @param {string} text
  */
 export async function exportToWord(text) {
@@ -71,14 +80,14 @@ function pushExportText(role, content) {
   });
 }
 
-function pushExportImage(file, dataUrl) {
-  if (!file || !dataUrl) return;
+function pushExportImage(file) {
+  if (!file) return;
   exportSequence.push({
     type: "image",
     role: "user",
+    file,
     name: file.name || "image",
-    mimeType: file.type || "image/*",
-    content: dataUrl
+    mimeType: file.type || "image/*"
   });
 }
 
@@ -178,7 +187,7 @@ function appendUserLine(container, text) {
   container.scrollTop = container.scrollHeight;
 }
 
-function appendUserImage(container, file, dataUrl) {
+function appendUserImage(container, file, previewUrl) {
   const row = document.createElement("div");
   row.className = "chat-msg chat-msg--plain chat-image-msg";
 
@@ -186,7 +195,7 @@ function appendUserImage(container, file, dataUrl) {
   label.textContent = "你：";
 
   const img = document.createElement("img");
-  img.src = dataUrl;
+  img.src = previewUrl;
   img.alt = file.name || "uploaded-image";
 
   const name = document.createElement("div");
@@ -324,7 +333,7 @@ function createStreamingAssistantBlock(container, docMode) {
 }
 
 /**
- * 使用 ReadableStreamDefaultReader 读取 OpenAI 兼容 SSE，解析 delta.content / delta.reasoning_content。
+ * 读取 OpenAI 兼容 SSE
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {(chunk: { content?: string, reasoning_content?: string }) => void} onDelta
  */
@@ -368,7 +377,7 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
         const json = JSON.parse(payload);
         emitFromJson(json);
       } catch {
-        // 忽略非完整/非 JSON 行
+        // ignore
       }
     }
   }
@@ -377,7 +386,6 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
   if (tail.startsWith("data:")) {
     const payload = tail.slice(5).trimStart();
     if (payload === "[DONE]") return;
-
     if (payload) {
       try {
         const json = JSON.parse(payload);
@@ -387,6 +395,123 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
       }
     }
   }
+}
+
+/**
+ * File -> ArrayBuffer
+ * 纯前端 Word 插图核心逻辑
+ * @param {File} file
+ * @returns {Promise<ArrayBuffer>}
+ */
+function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error(`读取图片失败：${file.name}`));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * 获取图片尺寸并做缩放
+ * @param {File} file
+ * @param {number} maxWidth
+ * @returns {Promise<{ width: number, height: number }>}
+ */
+function getImageSize(file, maxWidth = 520) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      let width = img.naturalWidth;
+      let height = img.naturalHeight;
+
+      if (width > maxWidth) {
+        const ratio = maxWidth / width;
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      URL.revokeObjectURL(url);
+      resolve({ width, height });
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`无法读取图片尺寸：${file.name}`));
+    };
+
+    img.src = url;
+  });
+}
+
+function buildTextParagraph(text) {
+  return new Paragraph({
+    spacing: { after: 180 },
+    children: [
+      new TextRun({
+        text: text || " ",
+        font: {
+          ascii: CJK_FONT,
+          eastAsia: CJK_FONT,
+          hAnsi: CJK_FONT,
+          cs: CJK_FONT
+        },
+        size: BODY_SIZE_HALF_POINTS
+      })
+    ]
+  });
+}
+
+async function buildImageParagraph(file) {
+  const [buffer, size] = await Promise.all([
+    readFileAsArrayBuffer(file),
+    getImageSize(file)
+  ]);
+
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 220 },
+    children: [
+      new ImageRun({
+        data: buffer,
+        transformation: {
+          width: size.width,
+          height: size.height
+        }
+      })
+    ]
+  });
+}
+
+async function exportMixedContentToWord() {
+  if (!exportSequence.length) {
+    throw new Error("当前没有可导出的图文内容");
+  }
+
+  const children = [];
+
+  for (const item of exportSequence) {
+    if (item.type === "text") {
+      children.push(buildTextParagraph(item.content));
+    } else if (item.type === "image") {
+      const paragraph = await buildImageParagraph(item.file);
+      children.push(paragraph);
+    }
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children
+      }
+    ]
+  });
+
+  const blob = await Packer.toBlob(doc);
+  saveAs(blob, exportFilenameWithTimestamp("聊天图文导出"));
 }
 
 function initMixedExport(output) {
@@ -409,45 +534,20 @@ function initMixedExport(output) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      appendUserImage(output, file, dataUrl);
-      pushExportImage(file, dataUrl);
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    appendUserImage(output, file, previewUrl);
+    pushExportImage(file);
 
     uploadInput.value = "";
   });
 
   exportMixedWordBtn.addEventListener("click", async () => {
-    if (!exportSequence.length) {
-      alert("当前没有可导出的图文内容");
-      return;
-    }
-
     const oldText = exportMixedWordBtn.textContent;
     exportMixedWordBtn.disabled = true;
     exportMixedWordBtn.textContent = "导出中...";
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          items: exportSequence
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || `HTTP ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      saveAs(blob, exportFilenameWithTimestamp("聊天图文导出"));
+      await exportMixedContentToWord();
     } catch (err) {
       console.error(err);
       alert(`导出失败：${err.message || err}`);
