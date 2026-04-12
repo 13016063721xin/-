@@ -278,18 +278,31 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
     let nl;
     while ((nl = buffer.indexOf("\n")) >= 0) {
       const rawLine = buffer.slice(0, nl);
+
+
+
+
+
       // 🌟 优化：先尝试解析，如果当前行不是完整的 JSON 就不消费 buffer（针对网络分块极端的场景）
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trimStart();
+      const line = rawLine.replace(/\r$/, "").trim();
+      if (line.startsWith("data:")) {
+        const payload = line.slice(5).trimStart();
       if (payload === "[DONE]") return;
+
       try {
         const json = JSON.parse(payload);
         emitFromJson(json);
       } catch {
-        /* 忽略非 JSON 行 */
+
+          // 如果解析失败，说明这行可能还没接收完整，跳出当前处理，等待下一次 stream chunk 拼接
+          // 这里不再执行 buffer 的截取，让它留到下次
+          break;
       }
     }
+
+      // 只有成功处理或明确是无关行时，才把 buffer 切掉
+      buffer = buffer.slice(nl + 1);
+  }
   }
 
   const tail = buffer.trim();
@@ -417,3 +430,4 @@ initStarfield();
 initChat();
 updateClock();
 setInterval(updateClock, 1000);
+
