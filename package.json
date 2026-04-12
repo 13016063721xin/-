@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "docx": "^9.6.1",
-    "file-saver": "^2.0.5"
+    "file-saver": "^2.0.5",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1"
   },
   "devDependencies": {
     "vite": "^6.0.0"

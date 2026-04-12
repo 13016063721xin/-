@@ -7,6 +7,8 @@ import {
   AlignmentType
 } from "docx";
 import { saveAs } from "file-saver";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 /** 12pt；docx 中 size 为半磅 */
 const BODY_SIZE_HALF_POINTS = 24;
@@ -19,7 +21,7 @@ const CJK_FONT = "Microsoft YaHei";
  */
 const exportSequence = [];
 
-function exportFilenameWithTimestamp(prefix = "AI回复") {
+function exportFilenameWithTimestamp(prefix = "AI回复", ext = "docx") {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -27,7 +29,7 @@ function exportFilenameWithTimestamp(prefix = "AI回复") {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   const ss = String(d.getSeconds()).padStart(2, "0");
-  return `${prefix}_${y}${m}${day}_${hh}${mm}${ss}.docx`;
+  return `${prefix}_${y}${m}${day}_${hh}${mm}${ss}.${ext}`;
 }
 
 /**
@@ -67,7 +69,7 @@ export async function exportToWord(text) {
   });
 
   const blob = await Packer.toBlob(doc);
-  saveAs(blob, exportFilenameWithTimestamp("AI回复"));
+  saveAs(blob, exportFilenameWithTimestamp("AI回复", "docx"));
 }
 
 function pushExportText(role, content) {
@@ -211,6 +213,143 @@ function appendUserImage(container, file, previewUrl) {
 }
 
 /**
+ * 创建离屏导出容器，用于真正下载 PDF
+ * @param {string} title
+ * @param {string[]} lines
+ * @returns {HTMLDivElement}
+ */
+function createPdfTextContainer(title, lines) {
+  const wrap = document.createElement("div");
+  wrap.style.position = "fixed";
+  wrap.style.left = "-99999px";
+  wrap.style.top = "0";
+  wrap.style.width = "794px";
+  wrap.style.background = "#ffffff";
+  wrap.style.color = "#111111";
+  wrap.style.padding = "40px";
+  wrap.style.fontFamily = '"Microsoft YaHei", Arial, sans-serif';
+  wrap.style.lineHeight = "1.8";
+  wrap.style.boxSizing = "border-box";
+
+  const heading = document.createElement("div");
+  heading.textContent = title;
+  heading.style.fontSize = "22px";
+  heading.style.fontWeight = "700";
+  heading.style.marginBottom = "20px";
+  wrap.appendChild(heading);
+
+  lines.forEach((line) => {
+    const p = document.createElement("div");
+    p.textContent = line || " ";
+    p.style.fontSize = "14px";
+    p.style.marginBottom = "10px";
+    p.style.whiteSpace = "pre-wrap";
+    p.style.wordBreak = "break-word";
+    wrap.appendChild(p);
+  });
+
+  document.body.appendChild(wrap);
+  return wrap;
+}
+
+async function exportElementToPdf(element, fileName) {
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: "#ffffff"
+  });
+
+  const imgData = canvas.toDataURL("image/png");
+  const pdf = new jsPDF("p", "mm", "a4");
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+
+  const imgWidth = pageWidth;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+  let heightLeft = imgHeight;
+  let position = 0;
+
+  pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  heightLeft -= pageHeight;
+
+  while (heightLeft > 0) {
+    position = heightLeft - imgHeight;
+    pdf.addPage();
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+  }
+
+  pdf.save(fileName);
+}
+
+async function exportSingleReplyToPdf(text) {
+  const normalized = String(text ?? "").replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const container = createPdfTextContainer("AI 回复导出", lines);
+
+  try {
+    await exportElementToPdf(container, exportFilenameWithTimestamp("AI回复", "pdf"));
+  } finally {
+    container.remove();
+  }
+}
+
+async function exportChatLogToPdf() {
+  const output = document.getElementById("output");
+  if (!output) throw new Error("未找到聊天记录区域");
+
+  const clone = output.cloneNode(true);
+  clone.style.height = "auto";
+  clone.style.minHeight = "auto";
+  clone.style.overflow = "visible";
+  clone.style.border = "none";
+  clone.style.background = "#ffffff";
+  clone.style.color = "#111111";
+  clone.style.padding = "24px";
+  clone.style.borderRadius = "0";
+  clone.style.fontFamily = '"Microsoft YaHei", Arial, sans-serif';
+  clone.style.boxSizing = "border-box";
+  clone.style.width = "794px";
+
+  clone.querySelectorAll(".chat-msg-actions").forEach((el) => el.remove());
+
+  clone.querySelectorAll(".chat-msg-reasoning").forEach((el) => {
+    el.style.background = "#f3f4f6";
+    el.style.border = "1px solid #e5e7eb";
+    el.style.color = "#4b5563";
+    el.style.padding = "8px 10px";
+    el.style.borderRadius = "8px";
+  });
+
+  clone.querySelectorAll("*").forEach((el) => {
+    if (el.classList?.contains("chat-msg-label") || el.classList?.contains("chat-image-name")) {
+      el.style.color = "#111111";
+    }
+    if (el.classList?.contains("chat-msg-text") || el.classList?.contains("chat-msg-answer") || el.classList?.contains("chat-msg")) {
+      el.style.color = "#111111";
+    }
+  });
+
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.left = "-99999px";
+  wrapper.style.top = "0";
+  wrapper.style.width = "794px";
+  wrapper.style.background = "#ffffff";
+  wrapper.appendChild(clone);
+
+  document.body.appendChild(wrapper);
+
+  try {
+    await exportElementToPdf(wrapper, exportFilenameWithTimestamp("聊天记录", "pdf"));
+  } finally {
+    wrapper.remove();
+  }
+}
+
+/**
  * @param {boolean} docMode 文档（思考）模式：Reasoner 模型、展示思考过程、结束后可导出 Word
  * @returns {{ wrap: HTMLDivElement, appendDelta: (p: { content?: string, reasoning_content?: string }) => void, finish: () => void, getFullText: () => string }}
  */
@@ -275,9 +414,20 @@ function createStreamingAssistantBlock(container, docMode) {
     pdfBtn.className = "chat-send";
     pdfBtn.textContent = "导出 PDF";
     pdfBtn.disabled = true;
-    pdfBtn.title = "将当前页面打印为 PDF（需等待生成结束）";
-    pdfBtn.addEventListener("click", () => {
-      window.print();
+    pdfBtn.title = "导出当前回复为 PDF（需等待生成结束）";
+    pdfBtn.addEventListener("click", async () => {
+      const out = answerText.trim() || reasoningText.trim() || fullText;
+      try {
+        pdfBtn.disabled = true;
+        pdfBtn.textContent = "导出中...";
+        await exportSingleReplyToPdf(out);
+      } catch (err) {
+        console.error(err);
+        alert(`导出 PDF 失败：${err.message || err}`);
+      } finally {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = "导出 PDF";
+      }
     });
 
     actions.appendChild(wordBtn);
@@ -511,7 +661,7 @@ async function exportMixedContentToWord() {
   });
 
   const blob = await Packer.toBlob(doc);
-  saveAs(blob, exportFilenameWithTimestamp("聊天图文导出"));
+  saveAs(blob, exportFilenameWithTimestamp("聊天图文导出", "docx"));
 }
 
 function initMixedExport(output) {
@@ -557,8 +707,20 @@ function initMixedExport(output) {
     }
   });
 
-  printPdfBtn.addEventListener("click", () => {
-    window.print();
+  printPdfBtn.addEventListener("click", async () => {
+    const oldText = printPdfBtn.textContent;
+    printPdfBtn.disabled = true;
+    printPdfBtn.textContent = "导出中...";
+
+    try {
+      await exportChatLogToPdf();
+    } catch (err) {
+      console.error(err);
+      alert(`导出 PDF 失败：${err.message || err}`);
+    } finally {
+      printPdfBtn.disabled = false;
+      printPdfBtn.textContent = oldText;
+    }
   });
 }
 
