@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>weijitao</title>
+  <title>AI生成文档</title>
   <style>
     :root {
       --bg: #040712;
@@ -153,8 +153,16 @@
       align-items: center;
     }
 
-    .chat-input {
+    .chat-input-wrap {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .chat-input {
+      width: 100%;
       border: none;
       background: rgba(255, 255, 255, 0.08);
       outline: none;
@@ -225,12 +233,6 @@
       flex-wrap: wrap;
     }
 
-    .chat-msg-actions--global {
-      padding-left: 0;
-      margin-top: 10px;
-      margin-bottom: 4px;
-    }
-
     .chat-send {
       border: none;
       background: rgba(255, 255, 255, 0.9);
@@ -259,20 +261,81 @@
       padding: 10px 12px;
     }
 
-    .chat-image-msg img {
-      max-width: 260px;
-      max-height: 260px;
-      border-radius: 10px;
-      display: block;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-      margin-top: 6px;
-    }
-
     .chat-image-name {
       margin-top: 6px;
       font-size: 12px;
       color: var(--subtle);
+    }
+
+    .chat-image-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .chat-image-card {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 180px;
+    }
+
+    .chat-image-card img {
+      max-width: 180px;
+      max-height: 180px;
+      border-radius: 10px;
+      display: block;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+
+    .staging {
+      display: none;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 8px;
+      border: 1px dashed rgba(255, 255, 255, 0.18);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .staging--active {
+      display: flex;
+    }
+
+    .staging-item {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .staging-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .staging-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 20px;
+      height: 20px;
+      border: none;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.72);
+      color: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 20px;
+      padding: 0;
     }
 
     .footer {
@@ -292,8 +355,7 @@
       .chat-row,
       .headline-top,
       .headline,
-      .footer,
-      .chat-msg-actions--global {
+      .footer {
         display: none !important;
       }
 
@@ -355,19 +417,18 @@
         <div class="chat-panel">
           <div class="chat-mode-bar" role="tablist" aria-label="对话模式">
             <button type="button" id="modeChat" class="mode-btn mode-btn--active" role="tab" aria-selected="true">聊天</button>
-            <button type="button" id="modeDoc" class="mode-btn" role="tab" aria-selected="false">文档</button>
+            <button type="button" id="modeDoc" class="mode-btn" role="tab" aria-selected="false">Word</button>
           </div>
 
           <div id="output" class="chat-log" role="log" aria-live="polite"></div>
 
-          <div class="chat-msg-actions chat-msg-actions--global">
-            <button id="exportMixedWordBtn" class="chat-send" type="button" title="导出当前图文对话为 Word">导出整段图文 Word</button>
-            <button id="printPdfBtn" class="chat-send" type="button" title="打印/导出当前页面为 PDF">导出整页 PDF</button>
-          </div>
-
           <div class="chat-row">
-            <input id="user-input" class="chat-input" type="text" placeholder="输入消息，按回车发送..." autocomplete="off" />
-            <input id="imageUploadInput" type="file" accept="image/*" hidden />
+            <div class="chat-input-wrap">
+              <div id="stagingArea" class="staging" aria-label="待发送图片预览区"></div>
+              <input id="user-input" class="chat-input" type="text" placeholder="输入消息，按回车发送..." autocomplete="off" />
+            </div>
+
+            <input id="imageUploadInput" type="file" accept="image/*" multiple hidden />
             <button id="imageUploadBtn" class="chat-send chat-icon-btn" type="button" title="上传图片">📎</button>
             <button id="sendBtn" class="chat-send" type="button">发送</button>
           </div>

@@ -14,13 +14,6 @@ import jsPDF from "jspdf";
 const BODY_SIZE_HALF_POINTS = 24;
 const CJK_FONT = "Microsoft YaHei";
 
-/**
- * 统一维护“整段图文导出”的顺序数组
- * text:  { type: "text", role: "user" | "assistant" | "system", content: string }
- * image: { type: "image", role: "user", file: File, name: string, mimeType: string }
- */
-const exportSequence = [];
-
 function exportFilenameWithTimestamp(prefix = "AI回复", ext = "docx") {
   const d = new Date();
   const y = d.getFullYear();
@@ -70,27 +63,6 @@ export async function exportToWord(text) {
 
   const blob = await Packer.toBlob(doc);
   saveAs(blob, exportFilenameWithTimestamp("AI回复", "docx"));
-}
-
-function pushExportText(role, content) {
-  const text = String(content ?? "").trim();
-  if (!text) return;
-  exportSequence.push({
-    type: "text",
-    role,
-    content: text
-  });
-}
-
-function pushExportImage(file) {
-  if (!file) return;
-  exportSequence.push({
-    type: "image",
-    role: "user",
-    file,
-    name: file.name || "image",
-    mimeType: file.type || "image/*"
-  });
 }
 
 function initStarfield() {
@@ -169,55 +141,57 @@ function updateClock() {
   document.getElementById("clock").textContent = `${h}:${m}:${s}`;
 }
 
-function appendSystemLine(container, text, { record = false } = {}) {
+function appendSystemLine(container, text) {
   const row = document.createElement("div");
   row.className = "chat-msg chat-msg--plain";
   row.textContent = `系统：${text}`;
   container.appendChild(row);
   container.scrollTop = container.scrollHeight;
-
-  if (record) {
-    pushExportText("system", `系统：${text}`);
-  }
 }
 
-function appendUserLine(container, text) {
+function appendUserMixedMessage(container, text, stagedImages) {
   const row = document.createElement("div");
   row.className = "chat-msg chat-msg--plain";
-  row.textContent = `你：${text}`;
-  container.appendChild(row);
-  container.scrollTop = container.scrollHeight;
-}
-
-function appendUserImage(container, file, previewUrl) {
-  const row = document.createElement("div");
-  row.className = "chat-msg chat-msg--plain chat-image-msg";
 
   const label = document.createElement("div");
   label.textContent = "你：";
-
-  const img = document.createElement("img");
-  img.src = previewUrl;
-  img.alt = file.name || "uploaded-image";
-
-  const name = document.createElement("div");
-  name.className = "chat-image-name";
-  name.textContent = file.name || "图片";
-
   row.appendChild(label);
-  row.appendChild(img);
-  row.appendChild(name);
+
+  if (text) {
+    const textEl = document.createElement("div");
+    textEl.textContent = text;
+    textEl.style.marginTop = "4px";
+    row.appendChild(textEl);
+  }
+
+  if (stagedImages.length) {
+    const grid = document.createElement("div");
+    grid.className = "chat-image-grid";
+
+    stagedImages.forEach((item) => {
+      const card = document.createElement("div");
+      card.className = "chat-image-card";
+
+      const img = document.createElement("img");
+      img.src = item.previewUrl;
+      img.alt = item.file.name || "uploaded-image";
+
+      const name = document.createElement("div");
+      name.className = "chat-image-name";
+      name.textContent = item.file.name || "图片";
+
+      card.appendChild(img);
+      card.appendChild(name);
+      grid.appendChild(card);
+    });
+
+    row.appendChild(grid);
+  }
 
   container.appendChild(row);
   container.scrollTop = container.scrollHeight;
 }
 
-/**
- * 创建离屏导出容器，用于真正下载 PDF
- * @param {string} title
- * @param {string[]} lines
- * @returns {HTMLDivElement}
- */
 function createPdfTextContainer(title, lines) {
   const wrap = document.createElement("div");
   wrap.style.position = "fixed";
@@ -264,7 +238,6 @@ async function exportElementToPdf(element, fileName) {
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-
   const imgWidth = pageWidth;
   const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
@@ -296,61 +269,8 @@ async function exportSingleReplyToPdf(text) {
   }
 }
 
-async function exportChatLogToPdf() {
-  const output = document.getElementById("output");
-  if (!output) throw new Error("未找到聊天记录区域");
-
-  const clone = output.cloneNode(true);
-  clone.style.height = "auto";
-  clone.style.minHeight = "auto";
-  clone.style.overflow = "visible";
-  clone.style.border = "none";
-  clone.style.background = "#ffffff";
-  clone.style.color = "#111111";
-  clone.style.padding = "24px";
-  clone.style.borderRadius = "0";
-  clone.style.fontFamily = '"Microsoft YaHei", Arial, sans-serif';
-  clone.style.boxSizing = "border-box";
-  clone.style.width = "794px";
-
-  clone.querySelectorAll(".chat-msg-actions").forEach((el) => el.remove());
-
-  clone.querySelectorAll(".chat-msg-reasoning").forEach((el) => {
-    el.style.background = "#f3f4f6";
-    el.style.border = "1px solid #e5e7eb";
-    el.style.color = "#4b5563";
-    el.style.padding = "8px 10px";
-    el.style.borderRadius = "8px";
-  });
-
-  clone.querySelectorAll("*").forEach((el) => {
-    if (el.classList?.contains("chat-msg-label") || el.classList?.contains("chat-image-name")) {
-      el.style.color = "#111111";
-    }
-    if (el.classList?.contains("chat-msg-text") || el.classList?.contains("chat-msg-answer") || el.classList?.contains("chat-msg")) {
-      el.style.color = "#111111";
-    }
-  });
-
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "fixed";
-  wrapper.style.left = "-99999px";
-  wrapper.style.top = "0";
-  wrapper.style.width = "794px";
-  wrapper.style.background = "#ffffff";
-  wrapper.appendChild(clone);
-
-  document.body.appendChild(wrapper);
-
-  try {
-    await exportElementToPdf(wrapper, exportFilenameWithTimestamp("聊天记录", "pdf"));
-  } finally {
-    wrapper.remove();
-  }
-}
-
 /**
- * @param {boolean} docMode 文档（思考）模式：Reasoner 模型、展示思考过程、结束后可导出 Word
+ * @param {boolean} docMode 文档（思考）模式
  * @returns {{ wrap: HTMLDivElement, appendDelta: (p: { content?: string, reasoning_content?: string }) => void, finish: () => void, getFullText: () => string }}
  */
 function createStreamingAssistantBlock(container, docMode) {
@@ -547,183 +467,6 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
   }
 }
 
-/**
- * File -> ArrayBuffer
- * 纯前端 Word 插图核心逻辑
- * @param {File} file
- * @returns {Promise<ArrayBuffer>}
- */
-function readFileAsArrayBuffer(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error(`读取图片失败：${file.name}`));
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-/**
- * 获取图片尺寸并做缩放
- * @param {File} file
- * @param {number} maxWidth
- * @returns {Promise<{ width: number, height: number }>}
- */
-function getImageSize(file, maxWidth = 520) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-
-    img.onload = () => {
-      let width = img.naturalWidth;
-      let height = img.naturalHeight;
-
-      if (width > maxWidth) {
-        const ratio = maxWidth / width;
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-
-      URL.revokeObjectURL(url);
-      resolve({ width, height });
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error(`无法读取图片尺寸：${file.name}`));
-    };
-
-    img.src = url;
-  });
-}
-
-function buildTextParagraph(text) {
-  return new Paragraph({
-    spacing: { after: 180 },
-    children: [
-      new TextRun({
-        text: text || " ",
-        font: {
-          ascii: CJK_FONT,
-          eastAsia: CJK_FONT,
-          hAnsi: CJK_FONT,
-          cs: CJK_FONT
-        },
-        size: BODY_SIZE_HALF_POINTS
-      })
-    ]
-  });
-}
-
-async function buildImageParagraph(file) {
-  const [buffer, size] = await Promise.all([
-    readFileAsArrayBuffer(file),
-    getImageSize(file)
-  ]);
-
-  return new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 220 },
-    children: [
-      new ImageRun({
-        data: buffer,
-        transformation: {
-          width: size.width,
-          height: size.height
-        }
-      })
-    ]
-  });
-}
-
-async function exportMixedContentToWord() {
-  if (!exportSequence.length) {
-    throw new Error("当前没有可导出的图文内容");
-  }
-
-  const children = [];
-
-  for (const item of exportSequence) {
-    if (item.type === "text") {
-      children.push(buildTextParagraph(item.content));
-    } else if (item.type === "image") {
-      const paragraph = await buildImageParagraph(item.file);
-      children.push(paragraph);
-    }
-  }
-
-  const doc = new Document({
-    sections: [
-      {
-        properties: {},
-        children
-      }
-    ]
-  });
-
-  const blob = await Packer.toBlob(doc);
-  saveAs(blob, exportFilenameWithTimestamp("聊天图文导出", "docx"));
-}
-
-function initMixedExport(output) {
-  const uploadInput = document.getElementById("imageUploadInput");
-  const uploadBtn = document.getElementById("imageUploadBtn");
-  const exportMixedWordBtn = document.getElementById("exportMixedWordBtn");
-  const printPdfBtn = document.getElementById("printPdfBtn");
-
-  uploadBtn.addEventListener("click", () => {
-    uploadInput.click();
-  });
-
-  uploadInput.addEventListener("change", () => {
-    const file = uploadInput.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
-      uploadInput.value = "";
-      return;
-    }
-
-    const previewUrl = URL.createObjectURL(file);
-    appendUserImage(output, file, previewUrl);
-    pushExportImage(file);
-
-    uploadInput.value = "";
-  });
-
-  exportMixedWordBtn.addEventListener("click", async () => {
-    const oldText = exportMixedWordBtn.textContent;
-    exportMixedWordBtn.disabled = true;
-    exportMixedWordBtn.textContent = "导出中...";
-
-    try {
-      await exportMixedContentToWord();
-    } catch (err) {
-      console.error(err);
-      alert(`导出失败：${err.message || err}`);
-    } finally {
-      exportMixedWordBtn.disabled = false;
-      exportMixedWordBtn.textContent = oldText;
-    }
-  });
-
-  printPdfBtn.addEventListener("click", async () => {
-    const oldText = printPdfBtn.textContent;
-    printPdfBtn.disabled = true;
-    printPdfBtn.textContent = "导出中...";
-
-    try {
-      await exportChatLogToPdf();
-    } catch (err) {
-      console.error(err);
-      alert(`导出 PDF 失败：${err.message || err}`);
-    } finally {
-      printPdfBtn.disabled = false;
-      printPdfBtn.textContent = oldText;
-    }
-  });
-}
-
 function initChat() {
   const userInput = document.getElementById("user-input");
   const sendBtn = document.getElementById("sendBtn");
@@ -731,14 +474,58 @@ function initChat() {
   const modeChat = document.getElementById("modeChat");
   const modeDoc = document.getElementById("modeDoc");
 
+  const uploadInput = document.getElementById("imageUploadInput");
+  const uploadBtn = document.getElementById("imageUploadBtn");
+  const stagingArea = document.getElementById("stagingArea");
+
   const messages = [{ role: "system", content: "你是一个简洁、友好的中文助手。" }];
   let docMode = false;
+
+  /** @type {{ file: File, previewUrl: string }[]} */
+  let stagedImages = [];
 
   function syncModeUI() {
     modeChat.classList.toggle("mode-btn--active", !docMode);
     modeDoc.classList.toggle("mode-btn--active", docMode);
     modeChat.setAttribute("aria-selected", String(!docMode));
     modeDoc.setAttribute("aria-selected", String(docMode));
+  }
+
+  function renderStagingArea() {
+    stagingArea.innerHTML = "";
+    stagingArea.classList.toggle("staging--active", stagedImages.length > 0);
+
+    stagedImages.forEach((item, index) => {
+      const box = document.createElement("div");
+      box.className = "staging-item";
+
+      const img = document.createElement("img");
+      img.src = item.previewUrl;
+      img.alt = item.file.name || "staged-image";
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "staging-remove";
+      removeBtn.type = "button";
+      removeBtn.textContent = "×";
+      removeBtn.title = "移除这张图片";
+      removeBtn.addEventListener("click", () => {
+        URL.revokeObjectURL(stagedImages[index].previewUrl);
+        stagedImages.splice(index, 1);
+        renderStagingArea();
+      });
+
+      box.appendChild(img);
+      box.appendChild(removeBtn);
+      stagingArea.appendChild(box);
+    });
+  }
+
+  function clearStagingArea() {
+    stagedImages.forEach((item) => {
+      URL.revokeObjectURL(item.previewUrl);
+    });
+    stagedImages = [];
+    renderStagingArea();
   }
 
   modeChat.addEventListener("click", () => {
@@ -751,6 +538,26 @@ function initChat() {
     syncModeUI();
   });
 
+  uploadBtn.addEventListener("click", () => {
+    uploadInput.click();
+  });
+
+  uploadInput.addEventListener("change", () => {
+    const files = Array.from(uploadInput.files || []);
+    if (!files.length) return;
+
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      stagedImages.push({
+        file,
+        previewUrl: URL.createObjectURL(file)
+      });
+    }
+
+    renderStagingArea();
+    uploadInput.value = "";
+  });
+
   syncModeUI();
 
   appendSystemLine(
@@ -758,20 +565,32 @@ function initChat() {
     "你好：请先选上方「聊天」或「文档（思考）」。聊天用 Chat 模型；写长文/导出 Word 请选文档模式并等待回复结束后再点「导出 Word」。"
   );
 
-  initMixedExport(output);
-
   async function sendMessage() {
     const prompt = userInput.value.trim();
-    if (!prompt) return;
+    const hasText = Boolean(prompt);
+    const hasImages = stagedImages.length > 0;
+
+    if (!hasText && !hasImages) return;
+
+    const sendingImages = stagedImages.map((item) => ({
+      file: item.file,
+      previewUrl: item.previewUrl
+    }));
 
     sendBtn.disabled = true;
+    uploadBtn.disabled = true;
     sendBtn.textContent = "发送中...";
 
-    appendUserLine(output, prompt);
-    pushExportText("user", `你：${prompt}`);
+    appendUserMixedMessage(output, prompt, sendingImages);
 
     userInput.value = "";
-    messages.push({ role: "user", content: prompt });
+    clearStagingArea();
+
+    if (hasText) {
+      messages.push({ role: "user", content: prompt });
+    } else {
+      messages.push({ role: "user", content: "[用户发送了图片]" });
+    }
 
     const model = docMode ? "deepseek-reasoner" : "deepseek-chat";
     const streamBlock = createStreamingAssistantBlock(output, docMode);
@@ -818,7 +637,6 @@ function initChat() {
       }
 
       messages.push({ role: "assistant", content: reply });
-      pushExportText("assistant", `AI：${reply}`);
     } catch (err) {
       if (streamBlock.wrap.parentNode === output) {
         output.removeChild(streamBlock.wrap);
@@ -826,6 +644,7 @@ function initChat() {
       appendSystemLine(output, `失败了: ${err.message}`);
     } finally {
       sendBtn.disabled = false;
+      uploadBtn.disabled = false;
       sendBtn.textContent = "发送";
     }
   }
