@@ -3,15 +3,22 @@ import { saveAs } from "file-saver";
 
 /** 12pt；docx 中 size 为半磅 */
 const BODY_SIZE_HALF_POINTS = 24;
-
 const CJK_FONT = "Microsoft YaHei";
 
-function exportFilenameWithTimestamp() {
+/**
+ * 用于“整段图文导出”的统一数据源
+ * item:
+ * - { type: "text", role: "user" | "assistant" | "system", content: string }
+ * - { type: "image", role: "user", name: string, mimeType: string, content: dataUrl }
+ */
+const exportSequence = [];
+
+function exportFilenameWithTimestamp(prefix = "AI回复") {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `AI回复_${y}${m}${day}.docx`;
+  return `${prefix}_${y}${m}${day}.docx`;
 }
 
 /**
@@ -51,7 +58,28 @@ export async function exportToWord(text) {
   });
 
   const blob = await Packer.toBlob(doc);
-  saveAs(blob, exportFilenameWithTimestamp());
+  saveAs(blob, exportFilenameWithTimestamp("AI回复"));
+}
+
+function pushExportText(role, content) {
+  const text = String(content ?? "").trim();
+  if (!text) return;
+  exportSequence.push({
+    type: "text",
+    role,
+    content: text
+  });
+}
+
+function pushExportImage(file, dataUrl) {
+  if (!file || !dataUrl) return;
+  exportSequence.push({
+    type: "image",
+    role: "user",
+    name: file.name || "image",
+    mimeType: file.type || "image/*",
+    content: dataUrl
+  });
 }
 
 function initStarfield() {
@@ -130,18 +158,45 @@ function updateClock() {
   document.getElementById("clock").textContent = `${h}:${m}:${s}`;
 }
 
-function appendSystemLine(container, text) {
+function appendSystemLine(container, text, { record = false } = {}) {
   const row = document.createElement("div");
   row.className = "chat-msg chat-msg--plain";
   row.textContent = `系统：${text}`;
   container.appendChild(row);
   container.scrollTop = container.scrollHeight;
+
+  if (record) {
+    pushExportText("system", `系统：${text}`);
+  }
 }
 
 function appendUserLine(container, text) {
   const row = document.createElement("div");
   row.className = "chat-msg chat-msg--plain";
   row.textContent = `你：${text}`;
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
+}
+
+function appendUserImage(container, file, dataUrl) {
+  const row = document.createElement("div");
+  row.className = "chat-msg chat-msg--plain chat-image-msg";
+
+  const label = document.createElement("div");
+  label.textContent = "你：";
+
+  const img = document.createElement("img");
+  img.src = dataUrl;
+  img.alt = file.name || "uploaded-image";
+
+  const name = document.createElement("div");
+  name.className = "chat-image-name";
+  name.textContent = file.name || "图片";
+
+  row.appendChild(label);
+  row.appendChild(img);
+  row.appendChild(name);
+
   container.appendChild(row);
   container.scrollTop = container.scrollHeight;
 }
@@ -156,6 +211,7 @@ function createStreamingAssistantBlock(container, docMode) {
 
   const bodyRow = document.createElement("div");
   bodyRow.className = "chat-msg-row";
+
   const label = document.createElement("span");
   label.className = "chat-msg-label";
   label.textContent = "AI：";
@@ -164,18 +220,19 @@ function createStreamingAssistantBlock(container, docMode) {
   let reasoningText = "";
   let answerText = "";
 
-  /** 单栏：聊天模式 */
   const bodySingle = document.createElement("div");
   bodySingle.className = "chat-msg-text";
   bodySingle.textContent = "";
 
-  /** 双栏：思考 + 正文 */
   const stack = document.createElement("div");
   stack.className = "chat-msg-text chat-msg-text--stack";
+
   const reasoningEl = document.createElement("div");
   reasoningEl.className = "chat-msg-reasoning";
+
   const answerEl = document.createElement("div");
   answerEl.className = "chat-msg-answer";
+
   stack.appendChild(reasoningEl);
   stack.appendChild(answerEl);
 
@@ -183,21 +240,20 @@ function createStreamingAssistantBlock(container, docMode) {
   bodyRow.appendChild(docMode ? stack : bodySingle);
   wrap.appendChild(bodyRow);
 
-  let btn = null;
-  let pdfBtn = null; // 🌟 新增：PDF 按钮引用
+  let wordBtn = null;
+  let pdfBtn = null;
 
   if (docMode) {
     const actions = document.createElement("div");
     actions.className = "chat-msg-actions";
 
-    // 原有的导出 Word 按钮
-    btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "chat-send";
-    btn.textContent = "导出 Word";
-    btn.disabled = true;
-    btn.title = "导出当前回复为 Word（需等待生成结束）";
-    btn.addEventListener("click", () => {
+    wordBtn = document.createElement("button");
+    wordBtn.type = "button";
+    wordBtn.className = "chat-send";
+    wordBtn.textContent = "导出 Word";
+    wordBtn.disabled = true;
+    wordBtn.title = "导出当前回复为 Word（需等待生成结束）";
+    wordBtn.addEventListener("click", () => {
       const out = answerText.trim() || reasoningText.trim() || fullText;
       exportToWord(out).catch((err) => {
         console.error(err);
@@ -205,21 +261,18 @@ function createStreamingAssistantBlock(container, docMode) {
       });
     });
 
-    // 🌟 新增：导出 PDF 按钮
     pdfBtn = document.createElement("button");
     pdfBtn.type = "button";
     pdfBtn.className = "chat-send";
-    pdfBtn.style.marginLeft = "8px"; // 加一点间距
     pdfBtn.textContent = "导出 PDF";
     pdfBtn.disabled = true;
-    pdfBtn.title = "将当前页面保存为 PDF（需等待生成结束）";
+    pdfBtn.title = "将当前页面打印为 PDF（需等待生成结束）";
     pdfBtn.addEventListener("click", () => {
-      // 临时给当前的对话容器加个高亮类（可选，这里为了简单直接调用 print）
       window.print();
     });
 
-    actions.appendChild(btn);
-    actions.appendChild(pdfBtn); // 🌟 新增：将 PDF 按钮加入 DOM
+    actions.appendChild(wordBtn);
+    actions.appendChild(pdfBtn);
     wrap.appendChild(actions);
   }
 
@@ -242,11 +295,13 @@ function createStreamingAssistantBlock(container, docMode) {
         }
         return;
       }
+
       if (typeof part.reasoning_content === "string" && part.reasoning_content.length) {
         reasoningText += part.reasoning_content;
         reasoningEl.textContent = reasoningText;
         scroll();
       }
+
       if (typeof part.content === "string" && part.content.length) {
         answerText += part.content;
         answerEl.textContent = answerText;
@@ -254,8 +309,8 @@ function createStreamingAssistantBlock(container, docMode) {
       }
     },
     finish() {
-      if (btn) btn.disabled = false;
-      if (pdfBtn) pdfBtn.disabled = false; // 🌟 新增：生成结束后启用 PDF 按钮
+      if (wordBtn) wordBtn.disabled = false;
+      if (pdfBtn) pdfBtn.disabled = false;
     },
     getFullText() {
       if (docMode) {
@@ -280,6 +335,7 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
   function emitFromJson(json) {
     const d = json?.choices?.[0]?.delta;
     if (!d || typeof d !== "object") return;
+
     const out = {};
     if (typeof d.reasoning_content === "string" && d.reasoning_content.length) {
       out.reasoning_content = d.reasoning_content;
@@ -287,57 +343,123 @@ async function readOpenAICompatibleSSEStream(reader, onDelta) {
     if (typeof d.content === "string" && d.content.length) {
       out.content = d.content;
     }
+
     if (Object.keys(out).length) onDelta(out);
   }
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+
     buffer += decoder.decode(value, { stream: true });
 
     let nl;
     while ((nl = buffer.indexOf("\n")) >= 0) {
       const rawLine = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
 
-
-
-
-
-      // 🌟 优化：先尝试解析，如果当前行不是完整的 JSON 就不消费 buffer（针对网络分块极端的场景）
       const line = rawLine.replace(/\r$/, "").trim();
-      if (line.startsWith("data:")) {
-        const payload = line.slice(5).trimStart();
+      if (!line.startsWith("data:")) continue;
+
+      const payload = line.slice(5).trimStart();
       if (payload === "[DONE]") return;
 
       try {
         const json = JSON.parse(payload);
         emitFromJson(json);
       } catch {
-
-          // 如果解析失败，说明这行可能还没接收完整，跳出当前处理，等待下一次 stream chunk 拼接
-          // 这里不再执行 buffer 的截取，让它留到下次
-          break;
+        // 忽略非完整/非 JSON 行
       }
     }
-
-      // 只有成功处理或明确是无关行时，才把 buffer 切掉
-      buffer = buffer.slice(nl + 1);
-  }
   }
 
   const tail = buffer.trim();
   if (tail.startsWith("data:")) {
     const payload = tail.slice(5).trimStart();
     if (payload === "[DONE]") return;
+
     if (payload) {
       try {
         const json = JSON.parse(payload);
         emitFromJson(json);
       } catch {
-        /* ignore */
+        // ignore
       }
     }
   }
+}
+
+function initMixedExport(output) {
+  const uploadInput = document.getElementById("imageUploadInput");
+  const uploadBtn = document.getElementById("imageUploadBtn");
+  const exportMixedWordBtn = document.getElementById("exportMixedWordBtn");
+  const printPdfBtn = document.getElementById("printPdfBtn");
+
+  uploadBtn.addEventListener("click", () => {
+    uploadInput.click();
+  });
+
+  uploadInput.addEventListener("change", () => {
+    const file = uploadInput.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("请选择图片文件");
+      uploadInput.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      appendUserImage(output, file, dataUrl);
+      pushExportImage(file, dataUrl);
+    };
+    reader.readAsDataURL(file);
+
+    uploadInput.value = "";
+  });
+
+  exportMixedWordBtn.addEventListener("click", async () => {
+    if (!exportSequence.length) {
+      alert("当前没有可导出的图文内容");
+      return;
+    }
+
+    const oldText = exportMixedWordBtn.textContent;
+    exportMixedWordBtn.disabled = true;
+    exportMixedWordBtn.textContent = "导出中...";
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          items: exportSequence
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText || `HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      saveAs(blob, exportFilenameWithTimestamp("聊天图文导出"));
+    } catch (err) {
+      console.error(err);
+      alert(`导出失败：${err.message || err}`);
+    } finally {
+      exportMixedWordBtn.disabled = false;
+      exportMixedWordBtn.textContent = oldText;
+    }
+  });
+
+  printPdfBtn.addEventListener("click", () => {
+    window.print();
+  });
 }
 
 function initChat() {
@@ -348,7 +470,6 @@ function initChat() {
   const modeDoc = document.getElementById("modeDoc");
 
   const messages = [{ role: "system", content: "你是一个简洁、友好的中文助手。" }];
-
   let docMode = false;
 
   function syncModeUI() {
@@ -362,10 +483,12 @@ function initChat() {
     docMode = false;
     syncModeUI();
   });
+
   modeDoc.addEventListener("click", () => {
     docMode = true;
     syncModeUI();
   });
+
   syncModeUI();
 
   appendSystemLine(
@@ -373,13 +496,18 @@ function initChat() {
     "你好：请先选上方「聊天」或「文档（思考）」。聊天用 Chat 模型；写长文/导出 Word 请选文档模式并等待回复结束后再点「导出 Word」。"
   );
 
+  initMixedExport(output);
+
   async function sendMessage() {
     const prompt = userInput.value.trim();
     if (!prompt) return;
 
     sendBtn.disabled = true;
     sendBtn.textContent = "发送中...";
+
     appendUserLine(output, prompt);
+    pushExportText("user", `你：${prompt}`);
+
     userInput.value = "";
     messages.push({ role: "user", content: prompt });
 
@@ -404,7 +532,7 @@ function initChat() {
           const j = JSON.parse(errText);
           detail = j.error || j.message || errText;
         } catch {
-          /* 保持原文 */
+          // 保持原文
         }
         throw new Error(`HTTP ${res.status} ${detail}`);
       }
@@ -420,12 +548,15 @@ function initChat() {
       });
 
       streamBlock.finish();
+
       let reply = streamBlock.getFullText();
       if (!reply.trim()) {
         streamBlock.appendDelta({ content: "接口返回为空。" });
         reply = streamBlock.getFullText();
       }
+
       messages.push({ role: "assistant", content: reply });
+      pushExportText("assistant", `AI：${reply}`);
     } catch (err) {
       if (streamBlock.wrap.parentNode === output) {
         output.removeChild(streamBlock.wrap);
@@ -438,6 +569,7 @@ function initChat() {
   }
 
   sendBtn.addEventListener("click", sendMessage);
+
   userInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -450,4 +582,3 @@ initStarfield();
 initChat();
 updateClock();
 setInterval(updateClock, 1000);
-

@@ -29,9 +29,10 @@ export default async (req) => {
       );
     }
 
-    const finalMessages = Array.isArray(messages) && messages.length
-      ? messages
-      : [{ role: "user", content: String(prompt || "") }];
+    const finalMessages =
+      Array.isArray(messages) && messages.length
+        ? messages
+        : [{ role: "user", content: String(prompt || "") }];
 
     const allowed = new Set(["deepseek-chat", "deepseek-reasoner"]);
     const model =

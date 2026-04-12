@@ -12,9 +12,7 @@
       --subtle: #b5bfd4;
       --border: rgba(255, 255, 255, 0.14);
       --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-      --shadow-hover: 0 12px 28px rgba(0, 0, 0, 0.5);
       --radius: 18px;
-      --max-width: 900px;
     }
 
     * {
@@ -124,10 +122,6 @@
       border-color: transparent;
     }
 
-    .footer {
-      display: none;
-    }
-
     .chat-panel {
       background: var(--card);
       border: 1px solid var(--border);
@@ -135,23 +129,6 @@
       box-shadow: var(--shadow);
       padding: 14px;
       backdrop-filter: blur(8px);
-    }
-
-    .chat-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .chat-input {
-      flex: 1;
-      border: none;
-      background: rgba(255, 255, 255, 0.08);
-      outline: none;
-      font-size: 14px;
-      color: var(--text);
-      padding: 10px 12px;
-      border-radius: 10px;
     }
 
     .chat-log {
@@ -167,6 +144,24 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+    }
+
+    .chat-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      align-items: center;
+    }
+
+    .chat-input {
+      flex: 1;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      outline: none;
+      font-size: 14px;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 10px;
     }
 
     .chat-msg {
@@ -225,12 +220,9 @@
 
     .chat-msg-actions {
       padding-left: 2.2em;
-    }
-
-    .chat-send:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-      transform: none;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .chat-send {
@@ -242,6 +234,7 @@
       font-size: 14px;
       cursor: pointer;
       transition: transform 0.2s ease, opacity 0.2s ease;
+      white-space: nowrap;
     }
 
     .chat-send:hover {
@@ -249,7 +242,37 @@
       opacity: 1;
     }
 
-    /* 🌟 新增：打印/导出 PDF 专用的样式 */
+    .chat-send:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .chat-icon-btn {
+      min-width: 44px;
+      padding: 10px 12px;
+    }
+
+    .chat-image-msg img {
+      max-width: 260px;
+      max-height: 260px;
+      border-radius: 10px;
+      display: block;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      margin-top: 6px;
+    }
+
+    .chat-image-name {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--subtle);
+    }
+
+    .footer {
+      display: none;
+    }
+
     @media print {
       body {
         background: white !important;
@@ -261,59 +284,10 @@
       #clock,
       .chat-mode-bar,
       .chat-row,
-      .chat-msg-actions,
-      .headline-top,
-      .headline {
-        display: none !important;
-      }
-
-      .wrap {
-        padding: 0 !important;
-        display: block !important;
-      }
-
-      .chat-panel {
-        box-shadow: none !important;
-        border: none !important;
-        background: transparent !important;
-        padding: 0 !important;
-      }
-
-      .chat-log {
-        height: auto !important;
-        min-height: auto !important;
-        overflow: visible !important;
-        border: none !important;
-        background: transparent !important;
-        color: black !important;
-      }
-
-      .chat-msg-reasoning {
-        background: #f3f4f6 !important;
-        border: 1px solid #e5e7eb !important;
-        color: #4b5563 !important;
-      }
-
-      .chat-msg-label {
-        color: #111827 !important;
-        font-weight: bold;
-      }
-    }
-      /* 打印/导出 PDF 专用的样式 */
-    @media print {
-      body {
-        background: white !important;
-        color: black !important;
-        overflow: visible !important;
-      }
-      
-      #starfield, 
-      #clock, 
-      .chat-mode-bar, 
-      .chat-row, 
       .headline-top,
       .headline,
-      .footer {
+      .footer,
+      .chat-msg-actions--global {
         display: none !important;
       }
 
@@ -348,12 +322,11 @@
         color: #4b5563 !important;
       }
 
-      .chat-msg-label {
-        color: #111827 !important;
-        font-weight: bold;
-      }
-
-      .chat-msg-text {
+      .chat-msg-label,
+      .chat-msg-text,
+      .chat-msg-answer,
+      .chat-msg,
+      .chat-image-name {
         color: #000 !important;
       }
 
@@ -366,6 +339,7 @@
 <body>
   <canvas id="starfield" aria-hidden="true"></canvas>
   <div id="clock" class="clock--fixed" aria-live="polite">00:00:00</div>
+
   <div class="wrap">
     <main class="container">
       <h1 class="headline-top">宾明智牛福</h1>
@@ -377,9 +351,18 @@
             <button type="button" id="modeChat" class="mode-btn mode-btn--active" role="tab" aria-selected="true">聊天</button>
             <button type="button" id="modeDoc" class="mode-btn" role="tab" aria-selected="false">Word</button>
           </div>
+
           <div id="output" class="chat-log" role="log" aria-live="polite"></div>
+
+          <div class="chat-msg-actions chat-msg-actions--global">
+            <button id="exportMixedWordBtn" class="chat-send" type="button" title="导出当前图文对话为 Word">导出整段图文 Word</button>
+            <button id="printPdfBtn" class="chat-send" type="button" title="打印/导出当前页面为 PDF">导出整页 PDF</button>
+          </div>
+
           <div class="chat-row">
             <input id="user-input" class="chat-input" type="text" placeholder="输入消息，按回车发送..." autocomplete="off" />
+            <input id="imageUploadInput" type="file" accept="image/*" hidden />
+            <button id="imageUploadBtn" class="chat-send chat-icon-btn" type="button" title="上传图片">📎</button>
             <button id="sendBtn" class="chat-send" type="button">发送</button>
           </div>
         </div>
@@ -392,4 +375,3 @@
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
-

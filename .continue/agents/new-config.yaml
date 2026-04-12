@@ -8,11 +8,11 @@ schema: v1
 # Define which models can be used
 # https://docs.continue.dev/customization/models
 models:
-  - name: "我的 Gemini"
+  - name: "我的 claude"
     provider: openai
-    model: "gemini-3.1-pro-preview"
-    apiKey: "sk-pbQ6zUAWe10aF6b2001ET3BlBKFJ6FB46B9dE9eB4d5bbeD1"
-    apiBase: "https://api.ohmygpt.com/v1"
+    model: "claude-opus-4-6"
+    apiKey: "37hD7zrGjqcoPc4RhIZkTPh8Sfw8rCrIqWJxjy7tizxgnKPZ"
+    apiBase: "https://api.jiucaihezi.studio/v1"
 # MCP Servers that Continue can access
 # https://docs.continue.dev/customization/mcp-tools
 mcpServers:
@@ -21,6 +21,6 @@ mcpServers:
 tabAutocompleteModel:
   name: "自动补全"
   provider: openai
-  model: "gemini-3.1-pro-preview"
-  apiKey: "sk-pbQ6zUAWe10aF6b2001ET3BlBKFJ6FB46B9dE9eB4d5bbeD1"
-  apiBase: "https://api.ohmygpt.com/v1"
+  model: "claude-opus-4-6"
+  apiKey: "37hD7zrGjqcoPc4RhIZkTPh8Sfw8rCrIqWJxjy7tizxgnKPZ"
+  apiBase: "https://api.jiucaihezi.studio/v1"
