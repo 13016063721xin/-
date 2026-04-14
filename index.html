@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI生成文档</title>
+  <title>One-Tool 智能助手</title>
   <style>
     :root {
       --bg: #040712;
@@ -55,10 +55,11 @@
       text-align: center;
     }
 
+    /* 🕰️ 核心改动 1：时钟移到左上角 */
     .clock--fixed {
       position: fixed;
-      top: 16px;
-      right: 20px;
+      top: 20px;   /* 稍微下调一点，和右边的状态栏对齐 */
+      left: 30px;  /* 从 right 改成了 left */
       z-index: 10;
       margin: 0;
       font-size: clamp(16px, 2.2vw, 22px);
@@ -69,21 +70,7 @@
       pointer-events: none;
     }
 
-    .headline {
-      font-size: clamp(32px, 6vw, 60px);
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      margin: 0 0 14px;
-      line-height: 1.12;
-    }
-
-    .headline-top {
-      font-size: clamp(32px, 6vw, 60px);
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      margin: 0 0 8px;
-      line-height: 1.12;
-    }
+    /* 删除了 headline 和 headline-top 的多余 CSS 样式 */
 
     .chat {
       width: 100%;
@@ -353,7 +340,7 @@
 <body>
   
   <div style="position: absolute; top: 20px; right: 30px; color: white; font-size: 14px; z-index: 9999; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(4px); display: flex; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-    <span>未登录 (免费试用: <span id="freeCount" style="color: #fbbf24; font-weight: bold; font-size: 16px; margin: 0 4px;">3</span> 次)</span>
+    <span id="userStatus">未登录 (免费试用: <span id="freeCount" style="color: #fbbf24; font-weight: bold; font-size: 16px; margin: 0 4px;">3</span> 次)</span>
     <button id="navLoginBtn" style="margin-left: 12px; padding: 6px 14px; background: #0ea5e9; border: none; color: white; border-radius: 12px; cursor: pointer; font-weight: bold; transition: opacity 0.2s;">
       去登录
     </button>
@@ -364,9 +351,6 @@
 
   <div class="wrap">
     <main class="container">
-      <h1 class="headline-top">宾明智牛福</h1>
-      <h1 class="headline">韦继韬牛逼</h1>
-
       <section class="chat" aria-label="AI 对话框">
         <div class="chat-panel">
           <div class="chat-mode-bar" role="tablist" aria-label="对话模式">
