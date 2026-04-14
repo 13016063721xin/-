@@ -606,6 +606,29 @@ function initChat() {
   const stagingArea = document.getElementById("stagingArea");
   const exportConversationWordBtn = document.getElementById("exportConversationWordBtn");
 
+  // =========================================================
+  // 👇【新增】初始化计分板与登录跳转按钮逻辑 👇
+  // =========================================================
+  function updateCountDisplay() {
+    let currentCount = parseInt(localStorage.getItem('oneToolUsageCount') || '0');
+    let leftCount = 3 - currentCount;
+    if (leftCount < 0) leftCount = 0;
+    const countSpan = document.getElementById('freeCount');
+    if(countSpan) countSpan.innerText = leftCount;
+  }
+  
+  // 页面一加载就更新一次右上角数字
+  updateCountDisplay();
+
+  // 给“去登录”按钮绑定跳转事件
+  const navLoginBtn = document.getElementById('navLoginBtn');
+  if(navLoginBtn) {
+    navLoginBtn.addEventListener('click', () => {
+      window.location.href = './login_demo.html';
+    });
+  }
+  // =========================================================
+
   const messages = [{ role: "system", content: "你是一个简洁、友好的中文助手。" }];
   let docMode = false;
 
@@ -710,6 +733,24 @@ function initChat() {
   );
 
   async function sendMessage() {
+    // =========================================================
+    // 👇【新增】核心防盗门拦截逻辑 👇
+    // =========================================================
+    let currentUsageCount = parseInt(localStorage.getItem('oneToolUsageCount') || '0');
+    
+    // 如果大于等于3次，直接拦截，弹窗并押送到登录页
+    if (currentUsageCount >= 3) {
+      alert("⚠️ 您的 3 次免费体验额度已用完，请登录后继续使用！");
+      window.location.href = './login_demo.html';
+      return; // 极其重要：直接 return，彻底阻断下面所有的 API 请求和发消息逻辑！
+    } else {
+      // 如果没超过，次数+1，保存并刷新右上角显示
+      currentUsageCount++;
+      localStorage.setItem('oneToolUsageCount', currentUsageCount);
+      updateCountDisplay();
+    }
+    // =========================================================
+
     const prompt = userInput.value.trim();
     const hasText = Boolean(prompt);
     const hasImages = stagedImages.length > 0;

@@ -351,6 +351,14 @@
   </style>
 </head>
 <body>
+  
+  <div style="position: absolute; top: 20px; right: 30px; color: white; font-size: 14px; z-index: 9999; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(4px); display: flex; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+    <span>未登录 (免费试用: <span id="freeCount" style="color: #fbbf24; font-weight: bold; font-size: 16px; margin: 0 4px;">3</span> 次)</span>
+    <button id="navLoginBtn" style="margin-left: 12px; padding: 6px 14px; background: #0ea5e9; border: none; color: white; border-radius: 12px; cursor: pointer; font-weight: bold; transition: opacity 0.2s;">
+      去登录
+    </button>
+  </div>
+
   <canvas id="starfield" aria-hidden="true"></canvas>
   <div id="clock" class="clock--fixed" aria-live="polite">00:00:00</div>
 

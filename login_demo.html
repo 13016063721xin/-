@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One-Tool 云端大门测试</title>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: #1e293b;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            text-align: center;
+            width: 350px;
+        }
+        h2 { margin-bottom: 1.5rem; color: #38bdf8; }
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            box-sizing: border-box;
+        }
+        .btn-group { display: flex; gap: 10px; }
+        button {
+            flex: 1;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+        #signUpBtn { background-color: #10b981; color: white; }
+        #signInBtn { background-color: #0ea5e9; color: white; }
+        button:hover { opacity: 0.8; }
+        #statusMessage { margin-top: 1.5rem; font-size: 0.9rem; min-height: 1.2rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>One-Tool 控制中心</h2>
+        <input type="email" id="email" placeholder="输入邮箱 (例如: test@qq.com)">
+        <input type="password" id="password" placeholder="输入密码 (至少6位)">
+        
+        <div class="btn-group">
+            <button id="signUpBtn">注册账号</button>
+            <button id="signInBtn">登录</button>
+        </div>
+        
+        <p id="statusMessage"></p>
+    </div>
+
+    <script type="module" src="./auth_demo.js"></script>
+</body>
+</html>
